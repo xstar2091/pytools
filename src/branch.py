@@ -1,4 +1,4 @@
-import os
+import pathlib
 import sys
 import subprocess
 import rich.console
@@ -39,16 +39,21 @@ def init_command_line():
             print_version()
             return False
         else:
-            CommandLine.dir = os.path.abspath(sys.argv[1])
+            CommandLine.dir = pathlib.Path(sys.argv[1])
     elif len(sys.argv) == 3:
-        CommandLine.dir = os.path.abspath(sys.argv[1])
-        CommandLine.search_level = int(sys.argv[2])
-    if not os.path.isdir(CommandLine.dir) and not os.path.isfile(CommandLine.dir):
+        CommandLine.dir = pathlib.Path(sys.argv[1])
+        try:
+            CommandLine.search_level = int(sys.argv[2])
+        except ValueError:
+            print_help()
+            return False
+    path = pathlib.Path(CommandLine.dir)
+    if not path.is_dir() and not path.is_file():
         print_help()
         return False
-    if os.path.isfile(CommandLine.dir):
-        CommandLine.dir = os.path.dirname(CommandLine.dir)
-    CommandLine.dir = os.path.abspath(CommandLine.dir)
+    if path.is_file():
+        path = path.parent
+    CommandLine.dir = path.resolve()
     return True
 
 
@@ -94,7 +99,7 @@ class Branch(object):
 class GitBranch(Branch):
     def process(self, path: str) -> ProjectInfo:
         project_info = ProjectInfo()
-        project_info.project = os.path.basename(path)
+        project_info.project = pathlib.Path(path).name
         project_info.cvs_type = "git"
         out_list = self.run_command("git status", path)
         untracked_files_start = False
@@ -138,6 +143,7 @@ class BranchManager(object):
             "git": lambda: GitBranch()
         }
         self.modified_color = "red"
+        self.current_level = 0
         pass
 
     def work(self):
@@ -154,28 +160,25 @@ class BranchManager(object):
 
     def __collect_path(self):
         path_list = []
-        self.__do_collect_path(CommandLine.dir, path_list)
+        self.current_level = 1
+        self.__do_collect_path(pathlib.Path(CommandLine.dir), path_list)
         return path_list
         pass
 
-    def __do_collect_path(self, path: str, path_list: list):
-        for dir_path, dir_names, file_names in os.walk(path):
-            current_level = self.__get_current_search_level(dir_path)
-            if current_level <= CommandLine.search_level:
-                for dir_name in dir_names:
-                    if dir_name in self.supported_cvs_type.keys():
-                        cvs_type = self.supported_cvs_type[dir_name]
-                        path_list.append(PathInfo(dir_path, cvs_type))
+    def __do_collect_path(self, path: pathlib.Path, path_list: list):
+        if self.current_level > CommandLine.search_level:
+            return
+        for p in path.glob("*"):
+            if p.is_file():
+                continue
+            if p.name in self.supported_cvs_type.keys():
+                cvs_type = self.supported_cvs_type[p.name]
+                path_list.append(PathInfo(path, cvs_type))
+            else:
+                self.current_level += 1
+                self.__do_collect_path(path.joinpath(p), path_list)
+                self.current_level -= 1
         pass
-
-    @staticmethod
-    def __get_current_search_level(path: str):
-        left = path[len(CommandLine.dir):]
-        level = 0
-        level += left.count("/")
-        level += left.count("\\")
-        level += 1
-        return level
 
     def __print_project_info(self, project_info_list):
         console = rich.console.Console()
