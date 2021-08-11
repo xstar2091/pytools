@@ -7,7 +7,7 @@ import rich.table
 
 class CommandLine(object):
     # 搜索目录
-    dir = "."
+    dir = pathlib.Path(__file__).parent
     # 搜索层级
     search_level = 2
 
