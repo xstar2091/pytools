@@ -67,8 +67,9 @@ class ProjectInfo(object):
         self.branch_name = ""
         # 可能的值包含
         # done：所有修改都已提交并push到服务器
-        # modified：未push到服务器
-        self.status = "modified"
+        # modified：已修改未commit
+        # committed：已commit未push
+        self.status = ""
         # 更改的文件的数量
         self.modified_count = 0
         # 未纳入版本管理的文件数量
@@ -110,6 +111,8 @@ class GitBranch(Branch):
             if line[0].isspace():
                 line = line.strip()
                 if line.startswith("("):
+                    if line.find("git push") > 0 and line.find("publish your local commits") > 0:
+                        project_info.status = "committed"
                     continue
                 if untracked_files_start:
                     project_info.untracked_count += 1
@@ -126,9 +129,12 @@ class GitBranch(Branch):
                 elif line.startswith("On branch"):
                     project_info.branch_name = line.split()[-1]
                 elif line.startswith("nothing to commit"):
-                    project_info.status = "done"
+                    if project_info.status == "":
+                        project_info.status = "done"
                 elif line.startswith("Untracked files:"):
                     untracked_files_start = True
+        if project_info.status != "committed" and project_info.status != "done":
+            project_info.status = "modified"
         return project_info
         pass
 
